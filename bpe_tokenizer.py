@@ -64,7 +64,8 @@ class BPETokenizer:
 
             most_frequent_pair = sorted(set(self.token_frequencies.items()))[0]
             most_frequent_pair_concatenated = (
-                most_frequent_pair[0][0] + most_frequent_pair[0][1]
+                most_frequent_pair[0][0]
+                + most_frequent_pair[0][1]  # likely this concatenation way is wrong
             )
 
             self.vocabulary[len(self.vocabulary)] = most_frequent_pair_concatenated
