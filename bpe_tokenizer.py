@@ -1,12 +1,23 @@
 from io import TextIOWrapper
+from collections import defaultdict
+
+from bpe_utils import dict_to_defaultdict, duplicate_file, read_chunk
 
 
 class BPETokenizer:
-    def __init__(self, vocabulary: dict = {}, merge_rules: dict = {}) -> None:
+    """
+    Byte-Pair Encoding Tokenizer
 
-        self.vocabulary = vocabulary
-        self.merge_rules = merge_rules
-        self.token_frequencies = {}
+    It uses bytes internally, so any character consists of n bytes from range (0, 255), where n>0
+    """
+
+    def __init__(self, vocabulary: dict = None, merge_rules: dict = None) -> None:
+
+        self.vocabulary = dict_to_defaultdict(
+            vocabulary or {token: token for token in range(256)}
+        )
+        self.merge_rules = merge_rules or defaultdict(int)
+        self.token_frequencies = defaultdict(int)
 
     def train(
         self,
@@ -18,6 +29,15 @@ class BPETokenizer:
         """
         Train a tokenizer
 
+        Procedure:
+        We do things in chunks because datasets might be huge so we don't want to load all the dataset into memory at once
+        - Count a frequency of any two subsequent tokens, like in a sentence "hey, hello" we would identify (("h", "e"), 2) and all other pairs would have 1 occurence
+        - Pick a pair that has the most occurences
+        - Combine those tokens and put it into vocabulary
+        - Replace all occurences of the most frequent pair in dataset (working copy or original, if in_place=True)
+        - Reset token frequencies object
+        - Repeat from first step until we get a vocabulary of length of vocabulary_size or when all pairs have only 1 occurence
+
         :param in_place: if True, then will modify the dataset when training a tokenizer, so it saves a disk space by not copying a dataset during training (bool)
         """
 
@@ -27,42 +47,31 @@ class BPETokenizer:
             )
 
         # first pass
-        with open(self.dataset_path, "r", encoding="utf-8") as dataset_file:
-            for chunk in self.read_chunk(dataset_file):
-                self.tokenize_chunk()
-                pass
-
-        # next passes
         if in_place:
             working_copy_path = dataset_path
         else:
             working_copy_path = "working_copy.txt"
-            self.duplicate_file(dataset_path, working_copy_path)
+            duplicate_file(dataset_path, working_copy_path)
 
-    def duplicate_file(
-        source_path: str, destination_path: str, chunk_size: int = 1024 * 1024
-    ):
-        """
-        Duplicates a potentially large file by reading and writing in chunks.
+        while len(self.vocabulary) < vocabulary_size and (
+            len(self.token_frequencies) == 0
+            or not sorted(self.token_frequencies)[0][1][1] == 1
+        ):
+            self.token_frequencies = defaultdict(int)  # reset token frequencies counter
+            with open(self.dataset_path, "r", encoding="utf-8") as working_copy_path:
+                for chunk in read_chunk(working_copy_path):
+                    self.count_token_frequencies(chunk.encode("utf-8"))
 
-        :param source_path: Path to the source file
-        :param destination_path: Path to the destination file
-        :param chunk_size: Size of each chunk to read and write (default: 1MB)
-        """
-        with open(source_path, "rb") as source_file:
-            with open(destination_path, "wb") as dest_file:
-                while True:
-                    chunk = source_file.read(chunk_size)
-                    if not chunk:
-                        break
-                    dest_file.write(chunk)
+            most_frequent_pair = sorted(set(self.token_frequencies.items()))[0]
+            most_frequent_pair_concatenated = (
+                most_frequent_pair[0][0] + most_frequent_pair[0][1]
+            )
 
-    def read_chunk(self, file: TextIOWrapper, chunk_size: int = 512):
-        while True:
-            chunk = file.read(chunk_size)
-            if not chunk:
-                break
-            yield chunk
+            self.vocabulary[len(self.vocabulary)] = most_frequent_pair_concatenated
+
+    def count_token_frequencies(self, data):
+        for index in range(0, len(data), 2):
+            self.token_frequencies[(data[index], data[index + 1])] += 1
 
     def run(self):
         pass
