@@ -1,4 +1,3 @@
-from io import TextIOWrapper
 from collections import defaultdict
 
 from bpe_utils import dict_to_defaultdict, duplicate_file, read_chunk
@@ -7,8 +6,6 @@ from bpe_utils import dict_to_defaultdict, duplicate_file, read_chunk
 class BPETokenizer:
     """
     Byte-Pair Encoding Tokenizer
-
-    It uses bytes internally, so any character consists of n bytes from range (0, 255), where n>0
     """
 
     def __init__(self, vocabulary: dict = None, merge_rules: dict = None) -> None:
@@ -28,6 +25,7 @@ class BPETokenizer:
     ):
         """
         Train a tokenizer
+        :param in_place: if True, then will modify the dataset when training a tokenizer, so it saves a disk space by not copying a dataset during training (bool)
 
         Procedure:
         We do things in chunks because datasets might be huge so we don't want to load all the dataset into memory at once
@@ -38,7 +36,6 @@ class BPETokenizer:
         - Reset token frequencies object
         - Repeat from first step until we get a vocabulary of length of vocabulary_size or when all pairs have only 1 occurence
 
-        :param in_place: if True, then will modify the dataset when training a tokenizer, so it saves a disk space by not copying a dataset during training (bool)
         """
 
         if dataset_path is None:
@@ -58,17 +55,24 @@ class BPETokenizer:
             or not sorted(self.token_frequencies)[0][1][1] == 1
         ):
             self.token_frequencies = defaultdict(int)  # reset token frequencies counter
-            with open(self.dataset_path, "r", encoding="utf-8") as working_copy_path:
+            with open(
+                self.dataset_path, "r", encoding="utf-8"
+            ) as working_copy_path:  # maybe encoding here and decoding later is redundant?
                 for chunk in read_chunk(working_copy_path):
                     self.count_token_frequencies(chunk.encode("utf-8"))
 
             most_frequent_pair = sorted(set(self.token_frequencies.items()))[0]
-            most_frequent_pair_concatenated = (
-                most_frequent_pair[0][0]
-                + most_frequent_pair[0][1]  # likely this concatenation way is wrong
-            )
 
-            self.vocabulary[len(self.vocabulary)] = most_frequent_pair_concatenated
+            self.vocabulary[len(self.vocabulary)] = (
+                most_frequent_pair[0][0] + most_frequent_pair[0][1]
+            )  # it might be wrong method of concatenating bytes
+
+            # replace all occurences of a most frequent pair
+            with open(
+                self.dataset_path, "a+", encoding="utf-8"
+            ) as working_copy_path:  # maybe encoding here and decoding later is redundant?
+                for chunk in read_chunk(working_copy_path):
+                    chunk
 
     def count_token_frequencies(self, data):
         for index in range(0, len(data), 2):
