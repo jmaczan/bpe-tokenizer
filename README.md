@@ -2,7 +2,7 @@
 
 Byte-Pair Encoding tokenizer
 
-Work in progress :)
+This implementation is suitable for working with huge datasets, because it processes data in chunks, both during tokenization and training
 
 ```py
 BPETokenizer().train(dataset_path="./path/to/dataset.txt")
