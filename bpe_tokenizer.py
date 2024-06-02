@@ -58,9 +58,8 @@ class BPETokenizer:
             len(self.token_frequencies) == 0 or not self.all_pairs_are_unique()
         ):
             self.token_frequencies = defaultdict(int)  # reset token frequencies counter
-            with open(
-                working_copy_path, "r", encoding="utf-8"
-            ) as working_copy:  # maybe encoding here and decoding later is redundant?
+
+            with open(working_copy_path, "r", encoding="utf-8") as working_copy:
                 for chunk in read_chunk(file=working_copy):
                     self.count_token_frequencies(chunk.encode("utf-8"))
 
@@ -68,8 +67,9 @@ class BPETokenizer:
 
             new_token_index = len(self.vocabulary)
             self.vocabulary[new_token_index] = (
-                most_frequent_pair[0][0] + most_frequent_pair[0][1]
-            )  # it might be wrong method of concatenating bytes
+                most_frequent_pair[0][0],
+                most_frequent_pair[0][1],
+            )
 
             temp_file, temp_file_path = tempfile.mkstemp()
 
@@ -77,20 +77,26 @@ class BPETokenizer:
             with open(
                 working_copy_path,
                 "r",
-                encoding="utf-8",  # maybe encoding here and decoding later is redundant?
-            ) as working_copy, open(
-                temp_file, "a+", encoding="utf-8"
-            ) as temp_copy:  # unsure yet if "w" + utf-8 or "wb" without utf-8
+                encoding="utf-8",
+            ) as working_copy, open(temp_file, "w+", encoding="utf-8") as temp_copy:
                 for chunk in read_chunk(working_copy):
-                    chunk = chunk.encode("utf-8")
-                    for token in range(len(chunk) - 1):
+                    chunk = list(map(int, chunk.encode("utf-8")))
+                    chunk_processed = False
+                    index = 0
+                    while not chunk_processed:
                         if (
-                            most_frequent_pair[0] == chunk[token]
-                            and most_frequent_pair[1] == chunk[token + 1]
+                            most_frequent_pair[0][0] == chunk[index]
+                            and most_frequent_pair[0][1] == chunk[index + 1]
                         ):
-                            chunk = chunk[:token] + new_token_index + chunk[token + 2 :]
+                            chunk = (
+                                chunk[:index] + [new_token_index] + chunk[index + 2 :]
+                            )
+                        else:
+                            index += 1
+                        if len(chunk) - 2 == index:
+                            chunk_processed = True
 
-                    temp_copy.write(chunk.decode("utf-8"))
+                    temp_copy.write(chunk)
 
             os.replace(temp_file_path, working_copy_path)
 
