@@ -23,7 +23,6 @@ class BPETokenizer:
     def train(
         self,
         dataset_path,
-        output_path: str = None,
         vocabulary_size: int = 50_257,
         in_place: bool = False,
     ):
@@ -133,6 +132,10 @@ if __name__ == "__main__":
     parser.add_argument("--training_output")
     parser.add_argument("--tokenizer_data")
     parser.add_argument(
+        "--in_place",
+        help="Use carefully!! Use it if you want to modify dataset file during training. It will corrupt your dataset, but save memory during training",
+    )
+    parser.add_argument(
         "text", nargs="?", help="Text to be tokenized when running the tokenizer"
     )
     args = parser.parse_args()
@@ -151,9 +154,12 @@ if __name__ == "__main__":
             os.makedirs(output_dir)
 
         tokenizer = BPETokenizer()
-        vocabulary, merge_rules = tokenizer.train()
+        tokenizer.train(dataset_path=training_dataset, in_place=args.in_place or False)
 
-        save_output = {"vocabulary": vocabulary, "merge_rules": merge_rules}
+        save_output = {
+            "vocabulary": tokenizer.vocabulary,
+            "merge_rules": tokenizer.merge_rules,
+        }
 
         with open(training_output, "w") as output:
             json.dump(save_output, output, indent=4)
