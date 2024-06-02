@@ -1,7 +1,10 @@
 from collections import defaultdict
+from enum import Enum
+import json
 import tempfile
 from bpe_utils import dict_to_defaultdict, duplicate_file, read_chunk
-from os import replace
+import os
+import argparse
 
 
 class BPETokenizer:
@@ -63,7 +66,8 @@ class BPETokenizer:
 
             most_frequent_pair = sorted(set(self.token_frequencies.items()))[0]
 
-            self.vocabulary[len(self.vocabulary)] = (
+            new_token_index = len(self.vocabulary)
+            self.vocabulary[new_token_index] = (
                 most_frequent_pair[0][0] + most_frequent_pair[0][1]
             )  # it might be wrong method of concatenating bytes
 
@@ -82,16 +86,11 @@ class BPETokenizer:
                             most_frequent_pair[0] == chunk[token]
                             and most_frequent_pair[1] == chunk[token + 1]
                         ):
-                            chunk = (
-                                chunk[:token]
-                                + most_frequent_pair[0]
-                                + most_frequent_pair[1]
-                                + chunk[token + 2 :]
-                            )
+                            chunk = chunk[:token] + new_token_index + chunk[token + 2 :]
 
                         temp_copy.write(chunk)
 
-            replace(temp_file_path, working_copy_path)
+            os.replace(temp_file_path, working_copy_path)
 
     def count_token_frequencies(self, data):
         for index in range(0, len(data), 2):
@@ -111,6 +110,66 @@ class BPETokenizer:
         self.vocabulary = vocabulary
 
 
+class BPEAction(Enum):
+    train = "train"
+    run = "run"
+
+    def __str__(self) -> str:
+        return self.value
+
+
+default_training_dataset_location = "training.txt"
+default_training_output_location = "tokenizer.json"
+default_inference_data_location = default_training_output_location
+
 if __name__ == "__main__":
-    tokenizer = BPETokenizer()
-    vocabulary, merge_rules = tokenizer.train()
+    parser = argparse.ArgumentParser(
+        description="Byte-Pair Encoding Tokenizer. Default training dataset location: 'training.txt'. Default inference (run) data location 'tokenizer.txt' - it includes JSONs with vocabulary and merge rules."
+    )
+    parser.add_argument("action", type="BPEAction", choices=list(BPEAction))
+    parser.add_argument(
+        "--training_dataset",
+    )
+    parser.add_argument("--training_output")
+    parser.add_argument("--tokenizer_data")
+    parser.add_argument(
+        "text", nargs="?", help="Text to be tokenized when running the tokenizer"
+    )
+    args = parser.parse_args()
+
+    if args.action == BPEAction.train:
+        training_dataset = args.training_dataset or default_training_dataset_location
+
+        if not os.path.exists(training_dataset):
+            print("Please provide a training dataset")
+            exit(1)
+
+        training_output = args.training_output or default_training_output_location
+        output_dir = os.path.dirname(training_output)
+
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        tokenizer = BPETokenizer()
+        vocabulary, merge_rules = tokenizer.train()
+
+        save_output = {"vocabulary": vocabulary, "merge_rules": merge_rules}
+
+        with open(training_output, "w") as output:
+            json.dump(save_output, output, indent=4)
+
+        print(
+            f"Tokenizer trained successfully. Vocabualry and merge rules are now stored in {training_output}"
+        )
+
+    if args.action == BPEAction.run:
+        tokenizer_data_location = args.tokenizer_data or default_inference_data_location
+
+        if not os.path.exists(tokenizer_data_location):
+            print(
+                "Please provide tokenizer data as a JSON that contains vocabulary and merge_rules"
+            )
+            exit(1)
+
+        tokenizer = BPETokenizer()
+        print(tokenizer.run())
