@@ -171,5 +171,17 @@ if __name__ == "__main__":
             )
             exit(1)
 
-        tokenizer = BPETokenizer()
-        print(tokenizer.run())
+        inference_content = args.text
+
+        if not inference_content:
+            print("Please provide text for an inference")
+            exit(1)
+
+        with open(tokenizer_data_location, "r") as tokenizer_data_file:
+            tokenizer_data = json.load(tokenizer_data_file)
+
+        vocabulary = tokenizer_data.get("vocabulary")
+        merge_rules = tokenizer_data.get("merge_rules")
+
+        tokenizer = BPETokenizer(vocabulary=vocabulary, merge_rules=merge_rules)
+        print(tokenizer.run(inference_content))
