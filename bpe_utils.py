@@ -28,7 +28,7 @@ def duplicate_file(
                 dest_file.write(chunk)
 
 
-def read_chunk(self, file: TextIOWrapper, chunk_size: int = 512):
+def read_chunk(file: TextIOWrapper, chunk_size: int = 512):
     while True:
         chunk = file.read(chunk_size)
         if not chunk:

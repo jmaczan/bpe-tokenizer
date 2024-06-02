@@ -6,6 +6,8 @@ from bpe_utils import dict_to_defaultdict, duplicate_file, read_chunk
 import os
 import argparse
 
+default_vocabulary_size = 50_257
+
 
 class BPETokenizer:
     """
@@ -23,7 +25,7 @@ class BPETokenizer:
     def train(
         self,
         dataset_path,
-        vocabulary_size: int = 50_257,
+        vocabulary_size: int = default_vocabulary_size,
         in_place: bool = False,
     ):
         """
@@ -36,7 +38,7 @@ class BPETokenizer:
         - Count a frequency of any two subsequent tokens, like in a sentence "hey, hello" we would identify (("h", "e"), 2) and all other pairs would have 1 occurence
         - Pick a pair that has the most occurences
         - Combine those tokens and put it into vocabulary
-        - Replace all occurences of the most frequent pair in dataset (working copy or original, if in_place=True)
+        - Replace all occurences of the most frequent pair in dataset (working copy or original, if in_place=True) with a new token index
         - Repeat from first step until we get a vocabulary of length of vocabulary_size or when all pairs have only 1 occurence
 
         """
@@ -53,17 +55,16 @@ class BPETokenizer:
             duplicate_file(dataset_path, working_copy_path)
 
         while len(self.vocabulary) < vocabulary_size and (
-            len(self.token_frequencies) == 0
-            or not sorted(self.token_frequencies)[0][1][1] == 1
+            len(self.token_frequencies) == 0 or not self.all_pairs_are_unique()
         ):
             self.token_frequencies = defaultdict(int)  # reset token frequencies counter
             with open(
                 working_copy_path, "r", encoding="utf-8"
-            ) as source_copy:  # maybe encoding here and decoding later is redundant?
-                for chunk in read_chunk(source_copy):
+            ) as working_copy:  # maybe encoding here and decoding later is redundant?
+                for chunk in read_chunk(file=working_copy):
                     self.count_token_frequencies(chunk.encode("utf-8"))
 
-            most_frequent_pair = sorted(set(self.token_frequencies.items()))[0]
+            most_frequent_pair = self.sort_by_token_frequency(self.token_frequencies)[0]
 
             new_token_index = len(self.vocabulary)
             self.vocabulary[new_token_index] = (
@@ -75,25 +76,33 @@ class BPETokenizer:
             # replace all occurences of a most frequent pair
             with open(
                 working_copy_path,
-                "a+",
+                "r",
                 encoding="utf-8",  # maybe encoding here and decoding later is redundant?
-            ) as source_copy, open(temp_file, "wb", encoding="utf-8") as temp_copy:
-                for chunk in read_chunk(source_copy):
+            ) as working_copy, open(
+                temp_file, "a+", encoding="utf-8"
+            ) as temp_copy:  # unsure yet if "w" + utf-8 or "wb" without utf-8
+                for chunk in read_chunk(working_copy):
                     chunk = chunk.encode("utf-8")
-                    for token in len(chunk) - 1:
+                    for token in range(len(chunk) - 1):
                         if (
                             most_frequent_pair[0] == chunk[token]
                             and most_frequent_pair[1] == chunk[token + 1]
                         ):
                             chunk = chunk[:token] + new_token_index + chunk[token + 2 :]
 
-                        temp_copy.write(chunk)
+                    temp_copy.write(chunk.decode("utf-8"))
 
             os.replace(temp_file_path, working_copy_path)
 
+    def all_pairs_are_unique(self):
+        return self.sort_by_token_frequency(self.token_frequencies)[0][1] == 1
+
     def count_token_frequencies(self, data):
-        for index in range(0, len(data), 2):
+        for index in range(0, len(data) - 1, 2):
             self.token_frequencies[(data[index], data[index + 1])] += 1
+
+    def sort_by_token_frequency(self, data: dict):
+        return list(sorted(data.items(), key=lambda item: item[1], reverse=True))
 
     def run(self):
         pass
@@ -125,11 +134,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Byte-Pair Encoding Tokenizer. Default training dataset location: 'training.txt'. Default inference (run) data location 'tokenizer.txt' - it includes JSONs with vocabulary and merge rules."
     )
-    parser.add_argument("action", type="BPEAction", choices=list(BPEAction))
+    parser.add_argument("action", type=BPEAction, choices=list(BPEAction))
     parser.add_argument(
         "--training_dataset",
     )
     parser.add_argument("--training_output")
+    parser.add_argument("--vocabulary_size", type=int)
     parser.add_argument("--tokenizer_data")
     parser.add_argument(
         "--in_place",
@@ -153,8 +163,14 @@ if __name__ == "__main__":
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
+        vocabulary_size = args.vocabulary_size or default_vocabulary_size
+
         tokenizer = BPETokenizer()
-        tokenizer.train(dataset_path=training_dataset, in_place=args.in_place or False)
+        tokenizer.train(
+            dataset_path=training_dataset,
+            in_place=args.in_place or False,
+            vocabulary_size=vocabulary_size,
+        )
 
         save_output = {
             "vocabulary": tokenizer.vocabulary,
@@ -165,7 +181,7 @@ if __name__ == "__main__":
             json.dump(save_output, output, indent=4)
 
         print(
-            f"Tokenizer trained successfully. Vocabualry and merge rules are now stored in {training_output}"
+            f"Tokenizer trained successfully. Vocabulary and merge rules are now stored in {training_output}"
         )
 
     if args.action == BPEAction.run:
