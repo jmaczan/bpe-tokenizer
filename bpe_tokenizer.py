@@ -20,12 +20,11 @@ class BPETokenizer:
     Byte-Pair Encoding Tokenizer
     """
 
-    def __init__(self, vocabulary: dict = None, merge_rules: dict = None) -> None:
+    def __init__(self, vocabulary: dict = None) -> None:
 
         self.vocabulary = dict_to_defaultdict(
             vocabulary or {token: token for token in range(256)}
         )
-        self.merge_rules = merge_rules or defaultdict(int)
         self.token_frequencies = defaultdict(int)
 
     def train(
@@ -150,11 +149,7 @@ class BPETokenizer:
     def load_vocabulary(self, vocabulary: dict = {}):
         self.vocabulary = vocabulary
 
-    def load_merge_rules(self, merge_rules: dict = {}):
-        self.merge_rules = merge_rules
-
-    def load(self, vocabulary: dict = {}, merge_rules: dict = {}):
-        self.merge_rules = merge_rules
+    def load(self, vocabulary: dict = {}):
         self.vocabulary = vocabulary
 
 
@@ -172,7 +167,7 @@ default_inference_data_location = default_training_output_location
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Byte-Pair Encoding Tokenizer. Default training dataset location: 'training.txt'. Default inference (run) data location 'tokenizer.txt' - it includes JSONs with vocabulary and merge rules."
+        description="Byte-Pair Encoding Tokenizer. Default training dataset location: 'training.txt'. Default inference (run) data location 'tokenizer.txt' - it includes JSONs with vocabulary"
     )
     parser.add_argument("action", type=BPEAction, choices=list(BPEAction))
     parser.add_argument(
@@ -212,25 +207,20 @@ if __name__ == "__main__":
             vocabulary_size=vocabulary_size,
         )
 
-        save_output = {
-            "vocabulary": tokenizer.vocabulary,
-            "merge_rules": tokenizer.merge_rules,
-        }
+        save_output = {"vocabulary": tokenizer.vocabulary}
 
         with open(training_output, "w") as output:
             json.dump(save_output, output, indent=4)
 
         print(
-            f"Tokenizer trained successfully. Vocabulary and merge rules are now stored in {training_output}"
+            f"Tokenizer trained successfully. Vocabulary is now stored in {training_output}"
         )
 
     if args.action == BPEAction.run:
         tokenizer_data_location = args.tokenizer_data or default_inference_data_location
 
         if not os.path.exists(tokenizer_data_location):
-            print(
-                "Please provide tokenizer data as a JSON that contains vocabulary and merge_rules"
-            )
+            print("Please provide tokenizer data as a JSON that contains vocabulary")
             exit(1)
 
         inference_content = args.text
@@ -243,7 +233,6 @@ if __name__ == "__main__":
             tokenizer_data = json.load(tokenizer_data_file)
 
         vocabulary = tokenizer_data.get("vocabulary")
-        merge_rules = tokenizer_data.get("merge_rules")
 
-        tokenizer = BPETokenizer(vocabulary=vocabulary, merge_rules=merge_rules)
+        tokenizer = BPETokenizer(vocabulary=vocabulary)
         print(tokenizer.run(inference_content))
