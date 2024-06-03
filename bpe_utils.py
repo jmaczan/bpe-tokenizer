@@ -28,9 +28,18 @@ def duplicate_file(
                 dest_file.write(chunk)
 
 
-def read_chunk(file: TextIOWrapper, chunk_size: int = 512):
+def read_utf_8_chunk(file: TextIOWrapper, chunk_size: int = 512):
     while True:
         chunk = file.read(chunk_size)
+        if not chunk:
+            break
+        yield chunk
+
+
+def read_binary_chunk(file, token_size=4, chunk_size=512):
+    bytes_chunk_size = token_size * chunk_size
+    while True:
+        chunk = file.read(bytes_chunk_size)
         if not chunk:
             break
         yield chunk

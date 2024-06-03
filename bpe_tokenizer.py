@@ -2,9 +2,15 @@ from collections import defaultdict
 from enum import Enum
 import json
 import tempfile
-from bpe_utils import dict_to_defaultdict, duplicate_file, read_chunk
+from bpe_utils import (
+    dict_to_defaultdict,
+    duplicate_file,
+    read_binary_chunk,
+    read_utf_8_chunk,
+)
 import os
 import argparse
+import numpy as np
 
 default_vocabulary_size = 50_257
 
@@ -54,18 +60,36 @@ class BPETokenizer:
             working_copy_path = "working_copy.txt"
             duplicate_file(dataset_path, working_copy_path)
 
+        # in first iteration, turn all characters into tokens and then into binary representation
+
+        temp_file, temp_file_path = tempfile.mkstemp()
+
+        with open(working_copy_path, "r", encoding="utf-8") as working_copy, open(
+            temp_file, "wb"
+        ) as temp_copy:
+            for chunk in read_utf_8_chunk(working_copy):
+                chunk = chunk.encode(encoding="utf-8")
+
+                for token in chunk:
+                    temp_copy.write(
+                        token.to_bytes(4, byteorder="big")
+                    )  # token size in bytes (4, 3, 2 or 1) can be calculated based on vocabulary_size and then reused in all places when I operate on bytes
+
+        os.replace(temp_file_path, working_copy_path)
+
         while len(self.vocabulary) < vocabulary_size and (
             len(self.token_frequencies) == 0 or not self.all_pairs_are_unique()
         ):
             self.token_frequencies = defaultdict(int)  # reset token frequencies counter
 
-            with open(working_copy_path, "r", encoding="utf-8") as working_copy:
-                for chunk in read_chunk(file=working_copy):
-                    self.count_token_frequencies(chunk.encode("utf-8"))
+            with open(working_copy_path, "rb") as working_copy:
+                for chunk in read_binary_chunk(file=working_copy):
+                    self.count_token_frequencies(chunk)
 
             most_frequent_pair = self.sort_by_token_frequency(self.token_frequencies)[0]
 
             new_token_index = len(self.vocabulary)
+
             self.vocabulary[new_token_index] = (
                 most_frequent_pair[0][0],
                 most_frequent_pair[0][1],
@@ -76,11 +100,10 @@ class BPETokenizer:
             # replace all occurences of a most frequent pair
             with open(
                 working_copy_path,
-                "r",
-                encoding="utf-8",
-            ) as working_copy, open(temp_file, "w+", encoding="utf-8") as temp_copy:
-                for chunk in read_chunk(working_copy):
-                    chunk = list(map(int, chunk.encode("utf-8")))
+                "rb",
+            ) as working_copy, open(temp_file, "wb") as temp_copy:
+                for chunk in read_binary_chunk(working_copy):
+                    chunk = list(map(int, chunk))
                     chunk_processed = False
                     index = 0
                     while not chunk_processed:
@@ -96,7 +119,8 @@ class BPETokenizer:
                         if len(chunk) - 2 == index:
                             chunk_processed = True
 
-                    temp_copy.write(chunk)
+                    for token in chunk:
+                        temp_copy.write(token.to_bytes(4, byteorder="big"))
 
             os.replace(temp_file_path, working_copy_path)
 
@@ -104,7 +128,11 @@ class BPETokenizer:
         return self.sort_by_token_frequency(self.token_frequencies)[0][1] == 1
 
     def count_token_frequencies(self, data):
-        for index in range(0, len(data) - 1, 2):
+        data = [
+            int.from_bytes(data[i : i + 4], byteorder="big")
+            for i in range(0, len(data), 4)
+        ]
+        for index in range(len(data) - 1):
             self.token_frequencies[(data[index], data[index + 1])] += 1
 
     def sort_by_token_frequency(self, data: dict):
@@ -149,7 +177,7 @@ if __name__ == "__main__":
     parser.add_argument("--tokenizer_data")
     parser.add_argument(
         "--in_place",
-        help="Use carefully!! Use it if you want to modify dataset file during training. It will corrupt your dataset, but save memory during training",
+        help="Use carefully! Use it if you want to modify dataset file during training. It will corrupt your dataset, but save memory during training",
     )
     parser.add_argument(
         "text", nargs="?", help="Text to be tokenized when running the tokenizer"
