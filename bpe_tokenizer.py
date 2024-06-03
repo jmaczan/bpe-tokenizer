@@ -143,8 +143,33 @@ class BPETokenizer:
     def sort_by_token_frequency(self, data: dict):
         return list(sorted(data.items(), key=lambda item: item[1], reverse=True))
 
-    def run(self):
-        pass
+    def run(self, data):
+        # we assume data to be array of tokens from vocabulary
+        # Procedure:
+        # - iterate over elements from vocabulary in reverse order, so starting from last and ending on index 255 (not processing it, since 0-255 are predefined elements of our vocab)
+        # - search for tokens that are like current key of element in vocabulary
+        # - replace all these elements with a pairs of consecutive tokens from a value of an element in vocab
+        # - repeat until you get to 255
+        # - merge items into string and return it
+        tokens = data  # maybe list() can be omitted
+        for token in sorted(list(map(int, self.vocabulary.keys())), reverse=True):
+            if token == 255:
+                break
+
+            index = 0
+            new_tokens = []
+            while index < len(tokens):
+                if tokens[index] == token:
+                    new_tokens.append(self.vocabulary[str(token)][0])
+                    new_tokens.append(self.vocabulary[str(token)][1])
+                    index += 2
+                else:
+                    new_tokens.append(tokens[index])
+                    index += 1
+
+            tokens = new_tokens
+
+        return "".join(token for token in bytes(tokens).decode("utf-8"))
 
     def load_vocabulary(self, vocabulary: dict = {}):
         self.vocabulary = vocabulary
@@ -155,7 +180,8 @@ class BPETokenizer:
 
 class BPEAction(Enum):
     train = "train"
-    run = "run"
+    tokenize = "tokenize"
+    detokenize = "detokenize"
 
     def __str__(self) -> str:
         return self.value
@@ -164,10 +190,11 @@ class BPEAction(Enum):
 default_training_dataset_location = "training.txt"
 default_training_output_location = "tokenizer.json"
 default_inference_data_location = default_training_output_location
+default_run_data_location = "run.txt"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Byte-Pair Encoding Tokenizer. Default training dataset location: 'training.txt'. Default inference (run) data location 'tokenizer.txt' - it includes JSONs with vocabulary"
+        description="Byte-Pair Encoding Tokenizer. Default training dataset location: 'training.txt'. Default tokenize/detokenize data location 'run.txt'. File structure: {'data': [72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 33, 256]}"
     )
     parser.add_argument("action", type=BPEAction, choices=list(BPEAction))
     parser.add_argument(
@@ -176,6 +203,7 @@ if __name__ == "__main__":
     parser.add_argument("--training_output")
     parser.add_argument("--vocabulary_size", type=int)
     parser.add_argument("--tokenizer_data")
+    parser.add_argument("--run_data")
     parser.add_argument(
         "--in_place",
         help="Use carefully! Use it if you want to modify dataset file during training. It will corrupt your dataset, but save memory during training",
@@ -216,18 +244,22 @@ if __name__ == "__main__":
             f"Tokenizer trained successfully. Vocabulary is now stored in {training_output}"
         )
 
-    if args.action == BPEAction.run:
+    if args.action == BPEAction.detokenize:
         tokenizer_data_location = args.tokenizer_data or default_inference_data_location
 
         if not os.path.exists(tokenizer_data_location):
             print("Please provide tokenizer data as a JSON that contains vocabulary")
             exit(1)
 
-        inference_content = args.text
+        run_data_location = args.run_data or default_run_data_location
 
-        if not inference_content:
-            print("Please provide text for an inference")
+        if not os.path.exists(run_data_location):
+            print("Please provide text for an detokenize")
             exit(1)
+
+        with open(run_data_location, "r") as run_data_file:
+            inference_content = json.load(run_data_file)
+            inference_content = inference_content.get("data", [])
 
         with open(tokenizer_data_location, "r") as tokenizer_data_file:
             tokenizer_data = json.load(tokenizer_data_file)
