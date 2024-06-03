@@ -1,11 +1,11 @@
 # bpe-tokenizer
 
-Byte-Pair Encoding tokenizer for large language models that can be trained on arbitrary huge datasets
+Byte-Pair Encoding tokenizer for large language models that can be trained on arbitrarily huge datasets
 
 <figure>
 <div align="center">
 <a href="https://anitamaczan.pl/#materia" target="_blank">
-<img src="https://anitamaczan.pl/materia.jpg" style="max-width: 200px; height: auto;" alt="'Materia' by Anita Maczan, Acrylic on canvas, 40x50, 2024">
+<img src="https://anitamaczan.pl/materia.jpg" width="250" alt="'Materia' by Anita Maczan, Acrylic on canvas, 40x50, 2024">
 </a>
 </div>
 <figcaption><div align="center" style="font-family: monospace; font-size: 0.75rem">"Materia" by Anita Maczan, Acrylic on canvas, 40x50, 2024</div></figcaption>
