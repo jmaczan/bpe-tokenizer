@@ -165,3 +165,5 @@ just_testing_things.py
 working_copy.txt
 tokenizer.json
 run.txt
+tokenize.txt
+detokenize.txt

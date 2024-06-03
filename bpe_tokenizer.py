@@ -106,16 +106,16 @@ class BPETokenizer:
             ) as working_copy, open(temp_file, "wb") as temp_copy:
                 for chunk in read_binary_chunk(working_copy):
                     tokens = np.frombuffer(
-                        chunk, dtype=np.uint32
-                    )  # adjust here based on vocabulary_size
-                    chunk_processed = False
+                        chunk, dtype=np.uint32  # adjust here based on vocabulary_size
+                    )
                     # this merge code is heavily inspired by how Andrej have implemented it here: https://github.com/karpathy/minbpe/blob/master/minbpe/base.py#L25 Previously, I tried slicing arrays and putting new tokens in the middle and it was too much headache of handling indices properly
                     new_tokens = []
                     index = 0
 
-                    while index < len(tokens) - 1:
+                    while index < len(tokens):
                         if (
-                            most_frequent_pair[0][0] == tokens[index]
+                            index + 1 < len(tokens)
+                            and most_frequent_pair[0][0] == tokens[index]
                             and most_frequent_pair[0][1] == tokens[index + 1]
                         ):
                             new_tokens.append(
@@ -125,8 +125,6 @@ class BPETokenizer:
                         else:
                             new_tokens.append(tokens[index])
                             index += 1
-                        if len(tokens) - 2 == index:
-                            break
 
                     for token in new_tokens:
                         temp_copy.write(token.tobytes())
@@ -143,7 +141,31 @@ class BPETokenizer:
     def sort_by_token_frequency(self, data: dict):
         return list(sorted(data.items(), key=lambda item: item[1], reverse=True))
 
-    def run(self, data):
+    def tokenize(self, data):
+        tokens = list(map(int, data.encode(encoding="utf-8")))
+        print(tokens)
+        added_keys = [key for key in self.vocabulary.keys() if int(key) > 255]
+        for vocabulary_item in added_keys:
+            new_tokens = []
+            index = 0
+
+            while index < len(tokens):
+                if (
+                    index + 1 < len(tokens)
+                    and self.vocabulary[vocabulary_item][0] == tokens[index]
+                    and self.vocabulary[vocabulary_item][1] == tokens[index + 1]
+                ):
+                    new_tokens.append(int(vocabulary_item))
+                    index += 2
+                else:
+                    new_tokens.append(tokens[index])
+                    index += 1
+
+            tokens = new_tokens
+
+        return tokens
+
+    def detokenize(self, tokens):
         # we assume data to be array of tokens from vocabulary
         # Procedure:
         # - iterate over elements from vocabulary in reverse order, so starting from last and ending on index 255 (not processing it, since 0-255 are predefined elements of our vocab)
@@ -151,7 +173,6 @@ class BPETokenizer:
         # - replace all these elements with a pairs of consecutive tokens from a value of an element in vocab
         # - repeat until you get to 255
         # - merge items into string and return it
-        tokens = data  # maybe list() can be omitted
         for token in sorted(list(map(int, self.vocabulary.keys())), reverse=True):
             if token == 255:
                 break
@@ -169,6 +190,7 @@ class BPETokenizer:
 
             tokens = new_tokens
 
+        print(tokens)
         return "".join(token for token in bytes(tokens).decode("utf-8"))
 
     def load_vocabulary(self, vocabulary: dict = {}):
@@ -190,11 +212,12 @@ class BPEAction(Enum):
 default_training_dataset_location = "training.txt"
 default_training_output_location = "tokenizer.json"
 default_inference_data_location = default_training_output_location
-default_run_data_location = "run.txt"
+default_tokenize_data_location = "tokenize.txt"
+default_detokenize_data_location = "detokenize.txt"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Byte-Pair Encoding Tokenizer. Default training dataset location: 'training.txt'. Default tokenize/detokenize data location 'run.txt'. File structure: {'data': [72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 33, 256]}"
+        description="Byte-Pair Encoding Tokenizer. Default training dataset location: 'training.txt'. Default tokenize data location 'tokenize.txt'. File structure: {'data': [72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 33, 256]}. Default detokenize data location 'detokenize.txt'. File structure: {'data': 'Hello world, Morty!'}"
     )
     parser.add_argument("action", type=BPEAction, choices=list(BPEAction))
     parser.add_argument(
@@ -244,17 +267,17 @@ if __name__ == "__main__":
             f"Tokenizer trained successfully. Vocabulary is now stored in {training_output}"
         )
 
-    if args.action == BPEAction.detokenize:
+    if args.action == BPEAction.tokenize:
         tokenizer_data_location = args.tokenizer_data or default_inference_data_location
 
         if not os.path.exists(tokenizer_data_location):
             print("Please provide tokenizer data as a JSON that contains vocabulary")
             exit(1)
 
-        run_data_location = args.run_data or default_run_data_location
+        run_data_location = args.run_data or default_tokenize_data_location
 
         if not os.path.exists(run_data_location):
-            print("Please provide text for an detokenize")
+            print("Please provide text to tokenize")
             exit(1)
 
         with open(run_data_location, "r") as run_data_file:
@@ -267,4 +290,29 @@ if __name__ == "__main__":
         vocabulary = tokenizer_data.get("vocabulary")
 
         tokenizer = BPETokenizer(vocabulary=vocabulary)
-        print(tokenizer.run(inference_content))
+        print(tokenizer.tokenize(inference_content))
+
+    if args.action == BPEAction.detokenize:
+        tokenizer_data_location = args.tokenizer_data or default_inference_data_location
+
+        if not os.path.exists(tokenizer_data_location):
+            print("Please provide tokenizer data as a JSON that contains vocabulary")
+            exit(1)
+
+        run_data_location = args.run_data or default_detokenize_data_location
+
+        if not os.path.exists(run_data_location):
+            print("Please provide text to detokenize")
+            exit(1)
+
+        with open(run_data_location, "r") as run_data_file:
+            inference_content = json.load(run_data_file)
+            inference_content = inference_content.get("data", [])
+
+        with open(tokenizer_data_location, "r") as tokenizer_data_file:
+            tokenizer_data = json.load(tokenizer_data_file)
+
+        vocabulary = tokenizer_data.get("vocabulary")
+
+        tokenizer = BPETokenizer(vocabulary=vocabulary)
+        print(tokenizer.detokenize(inference_content))
