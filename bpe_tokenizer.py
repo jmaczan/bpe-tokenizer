@@ -72,7 +72,7 @@ class BPETokenizer:
 
                 for token in chunk:
                     temp_copy.write(
-                        token.to_bytes(4, byteorder="big")
+                        token.to_bytes(4, byteorder="little")
                     )  # token size in bytes (4, 3, 2 or 1) can be calculated based on vocabulary_size and then reused in all places when I operate on bytes
 
         os.replace(temp_file_path, working_copy_path)
@@ -84,15 +84,18 @@ class BPETokenizer:
 
             with open(working_copy_path, "rb") as working_copy:
                 for chunk in read_binary_chunk(file=working_copy):
-                    self.count_token_frequencies(chunk)
+                    tokens = np.frombuffer(
+                        chunk, dtype=np.uint32
+                    )  # adjust here based on vocabulary_size
+                    self.count_token_frequencies(tokens)
 
             most_frequent_pair = self.sort_by_token_frequency(self.token_frequencies)[0]
 
             new_token_index = len(self.vocabulary)
 
             self.vocabulary[new_token_index] = (
-                most_frequent_pair[0][0],
-                most_frequent_pair[0][1],
+                int(most_frequent_pair[0][0]),
+                int(most_frequent_pair[0][1]),
             )
 
             temp_file, temp_file_path = tempfile.mkstemp()
@@ -103,24 +106,31 @@ class BPETokenizer:
                 "rb",
             ) as working_copy, open(temp_file, "wb") as temp_copy:
                 for chunk in read_binary_chunk(working_copy):
-                    chunk = list(map(int, chunk))
+                    tokens = np.frombuffer(
+                        chunk, dtype=np.uint32
+                    )  # adjust here based on vocabulary_size
                     chunk_processed = False
+                    # this merge code is heavily inspired by how Andrej have implemented it here: https://github.com/karpathy/minbpe/blob/master/minbpe/base.py#L25 Previously, I tried slicing arrays and putting new tokens in the middle and it was too much headache of handling indices properly
+                    new_tokens = []
                     index = 0
-                    while not chunk_processed:
-                        if (
-                            most_frequent_pair[0][0] == chunk[index]
-                            and most_frequent_pair[0][1] == chunk[index + 1]
-                        ):
-                            chunk = (
-                                chunk[:index] + [new_token_index] + chunk[index + 2 :]
-                            )
-                        else:
-                            index += 1
-                        if len(chunk) - 2 == index:
-                            chunk_processed = True
 
-                    for token in chunk:
-                        temp_copy.write(token.to_bytes(4, byteorder="big"))
+                    while index < len(tokens) - 1:
+                        if (
+                            most_frequent_pair[0][0] == tokens[index]
+                            and most_frequent_pair[0][1] == tokens[index + 1]
+                        ):
+                            new_tokens.append(
+                                np.uint32(new_token_index)
+                            )  # to be adjusted
+                            index += 2
+                        else:
+                            new_tokens.append(tokens[index])
+                            index += 1
+                        if len(tokens) - 2 == index:
+                            break
+
+                    for token in new_tokens:
+                        temp_copy.write(token.tobytes())
 
             os.replace(temp_file_path, working_copy_path)
 
@@ -128,11 +138,7 @@ class BPETokenizer:
         return self.sort_by_token_frequency(self.token_frequencies)[0][1] == 1
 
     def count_token_frequencies(self, data):
-        data = [
-            int.from_bytes(data[i : i + 4], byteorder="big")
-            for i in range(0, len(data), 4)
-        ]
-        for index in range(len(data) - 1):
+        for index in range(0, len(data) - 1, 2):
             self.token_frequencies[(data[index], data[index + 1])] += 1
 
     def sort_by_token_frequency(self, data: dict):
