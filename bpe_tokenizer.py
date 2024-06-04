@@ -143,7 +143,7 @@ class BPETokenizer:
 
     def tokenize(self, data):
         tokens = list(map(int, data.encode(encoding="utf-8")))
-        print(tokens)
+
         added_keys = [key for key in self.vocabulary.keys() if int(key) > 255]
         for vocabulary_item in added_keys:
             new_tokens = []
@@ -191,7 +191,6 @@ class BPETokenizer:
 
             tokens = new_tokens
 
-        print(tokens)
         return "".join(token for token in bytes(tokens).decode("utf-8"))
 
     def load_vocabulary(self, vocabulary: dict = {}):

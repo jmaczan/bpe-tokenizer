@@ -11,7 +11,7 @@ class TestTokenization(unittest.TestCase):
         tokens = self.tokenizer.tokenize(
             "Rick, you old bastard! Morty, you young bastard!"
         )
-        print(tokens)
+
         self.assertEqual(
             tokens,
             [
