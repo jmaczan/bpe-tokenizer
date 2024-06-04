@@ -173,20 +173,21 @@ class BPETokenizer:
         # - replace all these elements with a pairs of consecutive tokens from a value of an element in vocab
         # - repeat until you get to 255
         # - merge items into string and return it
-        for token in sorted(list(map(int, self.vocabulary.keys())), reverse=True):
-            if token == 255:
+        for vocabulary_token in sorted(
+            list(map(int, self.vocabulary.keys())), reverse=True
+        ):
+            if vocabulary_token == 255:
                 break
 
             index = 0
             new_tokens = []
             while index < len(tokens):
-                if tokens[index] == token:
-                    new_tokens.append(self.vocabulary[str(token)][0])
-                    new_tokens.append(self.vocabulary[str(token)][1])
-                    index += 2
+                if tokens[index] == vocabulary_token:
+                    new_tokens.append(self.vocabulary[str(vocabulary_token)][0])
+                    new_tokens.append(self.vocabulary[str(vocabulary_token)][1])
                 else:
                     new_tokens.append(tokens[index])
-                    index += 1
+                index += 1
 
             tokens = new_tokens
 
